@@ -72,6 +72,7 @@ class ConditionVariableBase {
   inline void Broadcast(const ScopedLock&);
   inline void Signal(const ScopedLock&);
   inline void Wait(const ScopedLock& scoped_lock);
+  inline void TimedWait(const ScopedLock& scoped_lock, uint64_t timeout);
 
   ConditionVariableBase(const ConditionVariableBase&) = delete;
   ConditionVariableBase& operator=(const ConditionVariableBase&) = delete;
@@ -106,6 +107,11 @@ struct LibuvMutexTraits {
 
   static inline void cond_wait(CondT* cond, MutexT* mutex) {
     uv_cond_wait(cond, mutex);
+  }
+
+  static inline void cond_timed_wait(
+      CondT* cond, MutexT* mutex, uint64_t timeout) {
+    uv_cond_timedwait(cond, mutex, timeout);
   }
 
   static inline void mutex_destroy(MutexT* mutex) {
@@ -144,6 +150,12 @@ void ConditionVariableBase<Traits>::Signal(const ScopedLock&) {
 template <typename Traits>
 void ConditionVariableBase<Traits>::Wait(const ScopedLock& scoped_lock) {
   Traits::cond_wait(&cond_, &scoped_lock.mutex_.mutex_);
+}
+
+template <typename Traits>
+void ConditionVariableBase<Traits>::TimedWait(
+    const ScopedLock& scoped_lock, uint64_t timeout) {
+  Traits::cond_timed_wait(&cond_, &scoped_lock.mutex_.mutex_, timeout);
 }
 
 template <typename Traits>
