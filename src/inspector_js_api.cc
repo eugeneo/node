@@ -254,8 +254,17 @@ void Open(const FunctionCallbackInfo<Value>& args) {
 void WaitForDebugger(const FunctionCallbackInfo<Value>& args) {
   Environment* env = Environment::GetCurrent(args);
   Agent* agent = env->inspector_agent();
+
+  const auto& timeout_arg = args[0];
+  int64_t timeout_ms = 0;
+  if (!timeout_arg->IsNullOrUndefined()) {
+    CHECK(timeout_arg->IsNumber());
+    timeout_ms = timeout_arg->IntegerValue(env->context()).FromJust();
+    CHECK_GE(timeout_ms, 0);
+  }
+
   if (agent->IsActive())
-    agent->WaitForConnect();
+    agent->WaitForConnect(timeout_ms);
   args.GetReturnValue().Set(agent->IsActive());
 }
 

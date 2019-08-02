@@ -78,7 +78,8 @@ class MainThreadInterface {
 
   void DispatchMessages();
   void Post(std::unique_ptr<Request> request);
-  bool WaitForFrontendEvent();
+  // Will wait indefinitely if timeout_ms is set to 0
+  bool WaitForFrontendEvent(uint64_t timeout_ns);
   std::shared_ptr<MainThreadHandle> GetHandle();
   Agent* inspector_agent() {
     return agent_;
@@ -92,7 +93,8 @@ class MainThreadInterface {
   MessageQueue requests_;
   Mutex requests_lock_;   // requests_ live across threads
   // This queue is to maintain the order of the messages for the cases
-  // when we reenter the DispatchMessages function.
+  // when we reenter the DispatchMessages function. One common case this happens
+  // is when we are paused and a user tries to evaluate some expression
   MessageQueue dispatching_message_queue_;
   bool dispatching_messages_ = false;
   ConditionVariable incoming_message_cond_;

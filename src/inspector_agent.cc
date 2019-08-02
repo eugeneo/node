@@ -481,8 +481,9 @@ class NodeInspectorClient : public V8InspectorClient {
     runMessageLoop();
   }
 
-  void waitForFrontend() {
-    waiting_for_frontend_ = true;
+  void waitForFrontend(uint64_t timeout) {
+    waiting_for_frontend_until_ =
+        timeout == 0 ? UINT64_MAX : uv_hrtime() + (timeout * 1000);
     runMessageLoop();
   }
 
@@ -529,7 +530,7 @@ class NodeInspectorClient : public V8InspectorClient {
   }
 
   void runIfWaitingForDebugger(int context_group_id) override {
-    waiting_for_frontend_ = false;
+    waiting_for_frontend_until_ = 0;
   }
 
   int connectFrontend(std::unique_ptr<InspectorSessionDelegate> delegate,
@@ -690,8 +691,10 @@ class NodeInspectorClient : public V8InspectorClient {
 
  private:
   bool shouldRunMessageLoop() {
-    if (waiting_for_frontend_)
+    if (waiting_for_frontend_until_ > 0
+        && uv_hrtime() < waiting_for_frontend_until_) {
       return true;
+    }
     if (waiting_for_sessions_disconnect_ || waiting_for_resume_) {
       return hasConnectedSessions();
     }
@@ -706,7 +709,7 @@ class NodeInspectorClient : public V8InspectorClient {
 
     MultiIsolatePlatform* platform = env_->isolate_data()->platform();
     while (shouldRunMessageLoop()) {
-      if (interface_) interface_->WaitForFrontendEvent();
+      if (interface_) interface_->WaitForFrontendEvent(0);
       while (platform->FlushForegroundTasks(env_->isolate())) {}
     }
     running_nested_loop_ = false;
@@ -736,7 +739,7 @@ class NodeInspectorClient : public V8InspectorClient {
   std::unordered_map<void*, InspectorTimerHandle> timers_;
   int next_session_id_ = 1;
   bool waiting_for_resume_ = false;
-  bool waiting_for_frontend_ = false;
+  uint64_t waiting_for_frontend_until_ = 0;
   bool waiting_for_sessions_disconnect_ = false;
   // Allows accessing Inspector from non-main threads
   std::unique_ptr<MainThreadInterface> interface_;
@@ -792,7 +795,7 @@ bool Agent::Start(const std::string& path,
     CHECK(!parent_env_->has_serialized_options());
     debug_options_.EnableBreakFirstLine();
     parent_env_->options()->get_debug_options()->EnableBreakFirstLine();
-    client_->waitForFrontend();
+    client_->waitForFrontend(0);
   }
   return true;
 }
@@ -982,9 +985,9 @@ std::unique_ptr<ParentInspectorHandle> Agent::GetParentHandle(
   }
 }
 
-void Agent::WaitForConnect() {
+void Agent::WaitForConnect(uint64_t timeout_ms) {
   CHECK_NOT_NULL(client_);
-  client_->waitForFrontend();
+  client_->waitForFrontend(timeout_ms);
 }
 
 std::shared_ptr<WorkerManager> Agent::GetWorkerManager() {

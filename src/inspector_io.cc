@@ -121,13 +121,6 @@ class RequestQueueData {
     }
   }
 
-  void Wait() {
-    Mutex::ScopedLock scoped_lock(state_lock_);
-    if (messages_.empty()) {
-      incoming_message_cond_.Wait(scoped_lock);
-    }
-  }
-
   void SetServer(InspectorSocketServer* server) {
     server_ = server;
   }

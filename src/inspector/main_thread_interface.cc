@@ -241,16 +241,27 @@ void MainThreadInterface::Post(std::unique_ptr<Request> request) {
   incoming_message_cond_.Broadcast(scoped_lock);
 }
 
-bool MainThreadInterface::WaitForFrontendEvent() {
+bool MainThreadInterface::WaitForFrontendEvent(uint64_t timeout_ns) {
   // We allow DispatchMessages reentry as we enter the pause. This is important
   // to support debugging the code invoked by an inspector call, such
   // as Runtime.evaluate
   dispatching_messages_ = false;
+  uint64_t wait_end = timeout_ns == 0 ? UINT64_MAX : uv_hrtime() + timeout_ns;
+  Mutex::ScopedLock scoped_lock(requests_lock_);
   if (dispatching_message_queue_.empty()) {
-    Mutex::ScopedLock scoped_lock(requests_lock_);
-    while (requests_.empty()) incoming_message_cond_.Wait(scoped_lock);
+    while (requests_.empty()) {
+      if (timeout_ns) {
+        incoming_message_cond_.Wait(scoped_lock);
+      } else {
+        int64_t remainingTime = (wait_end - uv_hrtime()) / 1000;
+        if (remainingTime < 0) {
+          break;
+        }
+        incoming_message_cond_.TimedWait(scoped_lock, remainingTime);
+      }
+    }
   }
-  return true;
+  return !(requests_.empty() && dispatching_message_queue_.empty());
 }
 
 void MainThreadInterface::DispatchMessages() {
